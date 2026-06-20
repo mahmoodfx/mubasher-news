@@ -146,6 +146,14 @@ tr.dsep td{background:#dbeafe;color:#1e40af;font-size:13px;font-weight:700;text-
 .stxt{color:rgba(255,255,255,.88);font-size:14.5px;line-height:1.85;margin-top:18px;position:relative;white-space:pre-wrap}
 .sacts{display:flex;align-items:center;gap:12px;margin-top:18px;position:relative;flex-wrap:wrap}
 .rbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:9px;padding:8px 16px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:background .2s}
+.apikey-wrap{margin-bottom:18px;position:relative}
+.apikey-label{color:rgba(255,255,255,.65);font-size:12px;margin-bottom:6px;display:block}
+.apikey-row{display:flex;gap:8px;align-items:center}
+.apikey-input{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:9px;padding:9px 14px;color:#fff;font-family:'Courier New',monospace;font-size:12px;outline:none;transition:border-color .2s}
+.apikey-input::placeholder{color:rgba(255,255,255,.3);font-family:'Noto Kufi Arabic',sans-serif}
+.apikey-input:focus{border-color:var(--acc-cyan)}
+.apikey-save{background:linear-gradient(135deg,var(--acc-purple),var(--acc-cyan));color:#fff;border:none;border-radius:9px;padding:9px 16px;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.apikey-ok{color:var(--acc-cyan);font-size:12px;margin-top:5px;display:none}
 .rbtn:hover{background:rgba(255,255,255,.2)}
 
 footer{background:#07091e;color:rgba(255,255,255,.45);text-align:center;padding:18px 24px;font-size:11.5px;line-height:1.7}
@@ -275,6 +283,15 @@ footer span{color:var(--acc-cyan);opacity:.7}
     <div class="orb o1"></div><div class="orb o2"></div>
     <div class="stit">📊 ملخص اليوم التحليلي</div>
     <div class="ssub">تحليل مباشر للمشتقات</div>
+    <div id="apikeySection" class="apikey-wrap" style="display:none">
+      <span class="apikey-label">🔑 أدخل مفتاح Anthropic API للتفعيل (يُحفظ للجلسة فقط)</span>
+      <div class="apikey-row">
+        <input type="password" class="apikey-input" id="apikeyInput"
+               placeholder="sk-ant-api03-..." autocomplete="off" />
+        <button class="apikey-save" onclick="saveApiKey()">حفظ وتفعيل</button>
+      </div>
+      <div class="apikey-ok" id="apikeyOk">✅ تم حفظ المفتاح — يمكنك توليد الملخص الآن</div>
+    </div>
     <div id="sumContent">
       <button class="gbtn" onclick="genSummary()">✨ توليد ملخص اليوم</button>
     </div>
@@ -913,12 +930,43 @@ function setStatus(type,icon,text){
 // ═══════════════════════════════════════════════════════════
 // SUMMARY
 // ═══════════════════════════════════════════════════════════
+// ── API KEY MANAGEMENT ──
+function getApiKey(){
+  return sessionStorage.getItem('mcd_api_key')||'';
+}
+function saveApiKey(){
+  const val=document.getElementById('apikeyInput').value.trim();
+  if(!val||!val.startsWith('sk-')){
+    alert('يرجى إدخال مفتاح API صحيح (يبدأ بـ sk-)');
+    return;
+  }
+  sessionStorage.setItem('mcd_api_key',val);
+  document.getElementById('apikeyOk').style.display='block';
+  document.getElementById('apikeyInput').value='';
+  setTimeout(()=>{ document.getElementById('apikeySection').style.display='none'; },1500);
+}
+function checkApiKeySection(){
+  // Show API key section if no key saved
+  const section=document.getElementById('apikeySection');
+  if(!getApiKey()&&section) section.style.display='block';
+}
+
 async function genSummary(){
   const c=document.getElementById('sumContent');
+
+  // Check for API key first
+  const apiKey=getApiKey();
+  if(!apiKey){
+    checkApiKeySection();
+    c.innerHTML=`<p style="color:rgba(255,255,255,.7);font-size:13px;margin-top:12px;">🔑 أدخل مفتاح API أعلاه لتوليد الملخص</p>`;
+    return;
+  }
+
   if(allEvents.length===0){
     c.innerHTML=`<p style="color:rgba(255,255,255,.6);font-size:14px;margin-top:12px;">لا توجد أحداث لتوليد ملخص</p>`;
     return;
   }
+
   c.innerHTML=`<div class="skwrap">
     <div class="skl" style="width:90%"></div><div class="skl" style="width:75%"></div>
     <div class="skl" style="width:85%"></div><div class="skl" style="width:60%"></div>
@@ -928,16 +976,32 @@ async function genSummary(){
     const txt=allEvents.map(e=>`${e.time}|${e.country}|${e.event}|${e.importance===3?'عالية':e.importance===2?'متوسطة':'منخفضة'}|سابق:${e.previous||'—'}|تقدير:${e.forecast||'—'}|حالي:${e.actual||'لم يصدر'}`).join('\n');
     const dateLabel=toArabic(bhrMidnight(0));
     const prompt=`أنت محلل مالي متخصص في المشتقات المالية والأسواق الخليجية. التاريخ: ${dateLabel}، بتوقيت البحرين (GMT+3).\n\nالأحداث:\n${txt}\n\nاكتب ملخصاً يومياً احترافياً بالعربية الفصحى دون رموز أو نقاط أو قوائم:\n- أبرز الأحداث وتأثيرها على أسواق المشتقات\n- التوقيتات بتوقيت البحرين\n- التأثير على USD وGBP وEUR والخليج\n- فقرتان إلى ثلاث بنبرة تحليلية`;
+
     const r=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
         'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
+        'anthropic-dangerous-direct-browser-access':'true',
+        'x-api-key': apiKey
       },
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
     });
+
     const d=await r.json();
+
+    // Handle auth error gracefully
+    if(d.error){
+      const errType=d.error.type||'';
+      if(errType==='authentication_error'){
+        sessionStorage.removeItem('mcd_api_key');
+        checkApiKeySection();
+        c.innerHTML=`<p style="color:#fc8181;font-size:13px;margin-top:12px;">⚠️ مفتاح API غير صحيح. يرجى إدخال مفتاح صحيح أعلاه.</p>`;
+        return;
+      }
+      throw new Error(d.error.message||'API error');
+    }
+
     const text=(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('')||'';
     const ts=new Intl.DateTimeFormat('ar-BH',{timeZone:'Asia/Bahrain',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date());
     c.innerHTML=`<div class="stxt">${text.trim()}</div>
@@ -946,7 +1010,7 @@ async function genSummary(){
         <span style="color:rgba(255,255,255,.4);font-size:11px;">تم التوليد · ${ts}</span>
       </div>`;
   }catch(err){
-    c.innerHTML=`<p style="color:#fc8181;font-size:13px;margin-top:12px;">⚠️ تعذّر التوليد – حاول مرة أخرى.</p>
+    c.innerHTML=`<p style="color:#fc8181;font-size:13px;margin-top:12px;">⚠️ تعذّر التوليد: ${err.message||err}. حاول مرة أخرى.</p>
       <div class="sacts"><button class="rbtn" onclick="genSummary()">🔄 إعادة المحاولة</button></div>`;
   }
 }
