@@ -913,111 +913,42 @@ function setStatus(type,icon,text){
 // ═══════════════════════════════════════════════════════════
 // SUMMARY
 // ═══════════════════════════════════════════════════════════
-// ── API KEY ──
-function getApiKey(){ return localStorage.getItem('mcd_api_key')||''; }
-
-function showKeyPrompt(afterSave){
-  const c=document.getElementById('sumContent');
-  c.innerHTML=`
-    <div style="margin-bottom:14px;position:relative">
-      <p style="color:rgba(255,255,255,.75);font-size:13px;margin-bottom:10px">
-        🔑 أدخل مفتاح Anthropic API مرة واحدة (يُحفظ تلقائياً على متصفحك)
-      </p>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="apikeyInput" type="password"
-          placeholder="sk-ant-api03-..."
-          style="flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.25);
-                 border-radius:9px;padding:10px 14px;color:#fff;font-family:'Courier New',monospace;
-                 font-size:12.5px;outline:none;min-width:0"
-          autocomplete="off"
-          onkeydown="if(event.key==='Enter')saveKey()" />
-        <button onclick="saveKey()"
-          style="background:linear-gradient(135deg,#7c3aed,#38bdf8);color:#fff;border:none;
-                 border-radius:9px;padding:10px 18px;font-family:inherit;font-size:13px;
-                 font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0">
-          حفظ وتوليد
-        </button>
-      </div>
-      <p style="color:rgba(255,255,255,.35);font-size:11px;margin-top:8px">
-        احصل على مفتاحك من: console.anthropic.com/settings/keys
-      </p>
-    </div>`;
-  // store callback
-  window._afterKeySave = afterSave;
-  setTimeout(()=>document.getElementById('apikeyInput')&&document.getElementById('apikeyInput').focus(),50);
-}
-
-function saveKey(){
-  const inp=document.getElementById('apikeyInput');
-  if(!inp) return;
-  const val=inp.value.trim();
-  if(!val.startsWith('sk-')){
-    inp.style.borderColor='#fc8181';
-    inp.placeholder='يرجى إدخال مفتاح صحيح يبدأ بـ sk-';
-    return;
-  }
-  localStorage.setItem('mcd_api_key',val);
-  if(window._afterKeySave) window._afterKeySave();
-}
-
 async function genSummary(){
   const c=document.getElementById('sumContent');
-
   if(allEvents.length===0){
     c.innerHTML=`<p style="color:rgba(255,255,255,.6);font-size:14px;margin-top:12px">لا توجد أحداث لتوليد ملخص</p>`;
     return;
   }
-
-  const apiKey=getApiKey();
-  if(!apiKey){ showKeyPrompt(genSummary); return; }
-
-  // Show skeleton
   c.innerHTML=`<div class="skwrap">
     <div class="skl" style="width:90%"></div><div class="skl" style="width:75%"></div>
     <div class="skl" style="width:85%"></div><div class="skl" style="width:60%"></div>
     <div class="skl" style="width:80%"></div></div>`;
-
   try{
     const txt=allEvents.map(e=>`${e.time}|${e.country}|${e.event}|${e.importance===3?'عالية':e.importance===2?'متوسطة':'منخفضة'}|سابق:${e.previous||'—'}|تقدير:${e.forecast||'—'}|حالي:${e.actual||'لم يصدر'}`).join('\n');
     const dateLabel=toArabic(bhrMidnight(0));
     const prompt=`أنت محلل مالي متخصص في المشتقات المالية والأسواق الخليجية. التاريخ: ${dateLabel}، بتوقيت البحرين (GMT+3).\n\nالأحداث:\n${txt}\n\nاكتب ملخصاً يومياً احترافياً بالعربية الفصحى دون رموز أو نقاط أو قوائم:\n- أبرز الأحداث وتأثيرها على أسواق المشتقات\n- التوقيتات بتوقيت البحرين\n- التأثير على USD وGBP وEUR والخليج\n- فقرتان إلى ثلاث بنبرة تحليلية`;
-
     const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{
         'Content-Type':'application/json',
         'anthropic-version':'2023-06-01',
         'anthropic-dangerous-direct-browser-access':'true',
-        'x-api-key':apiKey
+        'x-api-key':'__ANTHROPIC_KEY__'
       },
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompt}]})
     });
-
     const d=await resp.json();
-
-    if(d.error){
-      if(d.error.type==='authentication_error'){
-        localStorage.removeItem('mcd_api_key');
-        showKeyPrompt(genSummary);
-        return;
-      }
-      throw new Error(d.error.message||'API error');
-    }
-
+    if(d.error) throw new Error(d.error.message||'API error');
     const text=(d.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('')||'';
     const ts=new Intl.DateTimeFormat('ar-BH',{timeZone:'Asia/Bahrain',hour:'2-digit',minute:'2-digit',hour12:true}).format(new Date());
     c.innerHTML=`<div class="stxt">${text.trim()}</div>
       <div class="sacts">
         <button class="rbtn" onclick="genSummary()">🔄 تحديث</button>
-        <button class="rbtn" onclick="localStorage.removeItem('mcd_api_key');genSummary()" style="opacity:.6">🔑 تغيير المفتاح</button>
         <span style="color:rgba(255,255,255,.35);font-size:11px">تم التوليد · ${ts}</span>
       </div>`;
   }catch(err){
-    c.innerHTML=`<p style="color:#fc8181;font-size:13px;margin-top:12px">⚠️ ${err.message||'خطأ في الاتصال'}. حاول مرة أخرى.</p>
-      <div class="sacts">
-        <button class="rbtn" onclick="genSummary()">🔄 إعادة المحاولة</button>
-        <button class="rbtn" onclick="localStorage.removeItem('mcd_api_key');genSummary()" style="opacity:.6">🔑 تغيير المفتاح</button>
-      </div>`;
+    c.innerHTML=`<p style="color:#fc8181;font-size:13px;margin-top:12px">⚠️ تعذّر التوليد. حاول مرة أخرى.</p>
+      <div class="sacts"><button class="rbtn" onclick="genSummary()">🔄 إعادة المحاولة</button></div>`;
   }
 }
 
