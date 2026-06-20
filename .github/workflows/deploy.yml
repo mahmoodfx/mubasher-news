@@ -18,10 +18,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Inject API key
         env:
-          AKEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: sed -i "s|__ANTHROPIC_KEY__|${AKEY}|g" index.html
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 -c "
+import os
+key = os.environ['ANTHROPIC_API_KEY']
+with open('index.html', 'r') as f:
+    html = f.read()
+html = html.replace('__ANTHROPIC_KEY__', key)
+with open('index.html', 'w') as f:
+    f.write(html)
+replaced = '__ANTHROPIC_KEY__' not in html
+print('Key injected:', replaced)
+print('Key starts with:', key[:10] if key else 'EMPTY')
+"
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
